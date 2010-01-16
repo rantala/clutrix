@@ -33,7 +33,7 @@ make_utf8(void)
 }
 
 static ClutterActor *
-make_vertical_strip_with_pango(void)
+make_vertical_strip(void)
 {
 	fprintf(stderr, "%s()\n", __func__);
 	static const ClutterColor last_color = { 255, 255, 255, 255 };
@@ -88,46 +88,6 @@ make_vertical_strip_with_pango(void)
 	return group;
 }
 
-static ClutterActor *
-make_vertical_strip(void)
-{
-	fprintf(stderr, "*** %s()\n", __func__);
-	static const ClutterColor text_color = { 40, 255, 20, 255 };
-	static const ClutterColor last_color = { 255, 255, 255, 255 };
-	static char font[32];
-	unsigned i, len;
-	ClutterActor *strip, *lastchar, *group;
-	len = g_random_int_range(100, 300);
-	//len = 10;
-	sprintf(font, "Monospace %d", g_random_int_range(5, 19));
-	strip = clutter_text_new();
-	for (i=0; i < len; ++i) {
-		clutter_text_set_font_name(CLUTTER_TEXT(strip), font);
-		clutter_text_set_color(CLUTTER_TEXT(strip), &text_color);
-		clutter_text_insert_unichar(CLUTTER_TEXT(strip),
-				g_random_int_range(0x30a1, 0x30fa));
-		if (i < len-1) clutter_text_insert_unichar(CLUTTER_TEXT(strip), '\n');
-	}
-	group = clutter_group_new();
-	clutter_container_add_actor(CLUTTER_CONTAINER(group), strip);
-	float ypos = clutter_actor_get_height(strip);
-	/*for (i=0; i < 10; ++i) {
-		ClutterActor *clone = clutter_clone_new(strip);
-		clutter_container_add_actor(CLUTTER_CONTAINER(group), clone);
-		clutter_actor_set_y(clone, ypos);
-		ypos += clutter_actor_get_height(clone);
-	}*/
-	lastchar = clutter_text_new();
-	clutter_text_set_font_name(CLUTTER_TEXT(lastchar), font);
-	clutter_text_set_color(CLUTTER_TEXT(lastchar), &last_color);
-	clutter_text_insert_unichar(CLUTTER_TEXT(lastchar),
-			g_random_int_range(0x30a1, 0x30fa));
-	clutter_container_add_actor(CLUTTER_CONTAINER(group), lastchar);
-	clutter_actor_set_y(lastchar, ypos);
-	fprintf(stderr, "*** %s() DONE\n", __func__);
-	return group;
-}
-
 int main(int argc, char **argv)
 {
 	static const ClutterColor stage_color = { 0, 0, 0, 255 };
@@ -144,7 +104,6 @@ int main(int argc, char **argv)
 	clutter_stage_set_title(CLUTTER_STAGE(stage), "Clutrix");
 	while (xpos < CLUTTER_STAGE_WIDTH()) {
 		ClutterActor *actor = make_vertical_strip();
-		//ClutterActor *actor = make_vertical_strip_with_pango();
 		clutter_stage_add(stage, actor);
 		clutter_actor_set_position(actor, xpos, 0);
 		ClutterAnimation *anim = clutter_actor_animate(actor,
