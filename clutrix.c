@@ -3,26 +3,25 @@
 
 static gboolean windowed = 1;
 
-static char *
-set_pango_font(PangoLayout *layout)
+static void
+set_pango_font(PangoLayout *layout, unsigned min, unsigned max)
 {
 	static char font[32];
 	PangoFontDescription *desc;
-	sprintf(font, "Monospace %dpx", g_random_int_range(6, 35));
+	sprintf(font, "Monospace %dpx", g_random_int_range(min, max));
 	desc = pango_font_description_from_string(font);
-	//pango_font_description_set_weight(desc, PANGO_WEIGHT_ULTRAHEAVY);
 	pango_layout_set_font_description(layout, desc);
 	pango_font_description_free(desc);
-	return font;
 }
 
-static const char *
-make_utf8(void)
+static char *
+make_utf8(unsigned chars)
 {
-#define NUM_CHARS 20
-	static char buf[NUM_CHARS*7+1];
+	char *buf;
 	unsigned i, pos;
-	for (pos=0, i=0; i < NUM_CHARS; ++i) {
+	/* One unicode character takes max. 6 bytes in UTF-8. */
+	buf = g_malloc(chars*7);
+	for (pos=0, i=0; i < chars; ++i) {
 		gunichar u = g_random_int_range(0x30a1, 0x30fa);
 		int len = g_unichar_to_utf8(u, &buf[pos]);
 		buf[pos+len] = '\n';
@@ -33,30 +32,30 @@ make_utf8(void)
 }
 
 static ClutterActor *
-make_vertical_strip(void)
+make_vertical_actor(unsigned chars, const ClutterColor *text_color)
 {
-	fprintf(stderr, "%s()\n", __func__);
-	static const ClutterColor last_color = { 255, 255, 255, 255 };
-	const char *font;
-	unsigned i, clones;
+	static const unsigned font_min_px=6, font_max_px=20;
+	const unsigned maxw=font_max_px, maxh=2*font_max_px*chars;
+	char *text;
 	int width, height;
 	cairo_t *cr;
 	cairo_surface_t *surface;
 	PangoLayout *layout;
-	ClutterActor *strip, *lastchar, *group;
-	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 60, 2000);
+	ClutterActor *actor;
+	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, maxw, maxh);
 	cr = cairo_create(surface);
 	layout = pango_cairo_create_layout(cr);
-	font = set_pango_font(layout);
-	pango_layout_set_text(layout, make_utf8(), -1);
-	cairo_set_source_rgb(cr, 0, 1.0, 0);
+	set_pango_font(layout, font_min_px, font_max_px);
+	text = make_utf8(chars);
+	pango_layout_set_text(layout, text, -1);
+	g_free(text);
+	clutter_cairo_set_source_color(cr, text_color);
 	pango_cairo_show_layout(cr, layout);
 	pango_layout_get_size (layout, &width, &height);
 	width = PANGO_PIXELS(width);
 	height = PANGO_PIXELS(height);
-	fprintf(stderr, " w=%d, h=%d\n", (width), (height));
-	strip = clutter_texture_new();
-	clutter_texture_set_from_rgb_data(CLUTTER_TEXTURE(strip),
+	actor = clutter_texture_new();
+	clutter_texture_set_from_rgb_data(CLUTTER_TEXTURE(actor),
 			cairo_image_surface_get_data(surface),
 			TRUE,
 			width,
@@ -68,23 +67,26 @@ make_vertical_strip(void)
 	cairo_surface_destroy(surface);
 	cairo_destroy(cr);
 	g_object_unref(layout);
+	return actor;
+}
+
+static ClutterActor *
+make_vertical_strip(void)
+{
+	static const ClutterColor text_color = {   0, 255,   0, 255 };
+	static const ClutterColor last_color = { 255, 255, 255, 255 };
+	ClutterActor *group, *actor1, *actor2;
+	unsigned chars = g_random_int_range(100, 200);
 	group = clutter_group_new();
-	clutter_container_add_actor(CLUTTER_CONTAINER(group), strip);
-	float ypos = clutter_actor_get_height(strip);
-	clones = g_random_int_range(4, 8);
-	for (i=0; i < clones; ++i) {
-		ClutterActor *clone = clutter_clone_new(strip);
-		clutter_container_add_actor(CLUTTER_CONTAINER(group), clone);
-		clutter_actor_set_y(clone, ypos);
-		ypos += clutter_actor_get_height(clone);
-	}
-	lastchar = clutter_text_new();
-	clutter_text_set_font_name(CLUTTER_TEXT(lastchar), font);
-	clutter_text_set_color(CLUTTER_TEXT(lastchar), &last_color);
-	clutter_text_insert_unichar(CLUTTER_TEXT(lastchar),
-			g_random_int_range(0x30a1, 0x30fa));
-	clutter_container_add_actor(CLUTTER_CONTAINER(group), lastchar);
-	clutter_actor_set_y(lastchar, ypos);
+	actor1 = make_vertical_actor(chars, &text_color);
+	actor2 = make_vertical_actor(1, &last_color);
+	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor1);
+	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor2);
+	clutter_actor_set_y(actor2, clutter_actor_get_height(actor1));
+	g_debug("%s(): %u characters, actor size: [%2g, %4g]",
+			__func__, chars+1,
+			clutter_actor_get_width(group),
+			clutter_actor_get_height(group));
 	return group;
 }
 
@@ -120,7 +122,7 @@ int main(int argc, char **argv)
 		xpos += clutter_actor_get_width(actor);
 	}
 	clutter_actor_show(stage);
-	fprintf(stderr, "*** %s(): entering main loop.\n", __func__);
+	g_debug("entering clutter main loop.");
 	clutter_main();
 	return 0;
 }
