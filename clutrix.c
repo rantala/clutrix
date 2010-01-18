@@ -20,55 +20,46 @@
 #include <clutter/clutter.h>
 #include <pango/pangocairo.h>
 
-static gboolean windowed = 1;
-
-static void
-set_pango_font(PangoLayout *layout, unsigned min, unsigned max)
-{
-	static char font[32];
-	PangoFontDescription *desc;
-	sprintf(font, "Monospace %dpx", g_random_int_range(min, max));
-	desc = pango_font_description_from_string(font);
-	pango_layout_set_font_description(layout, desc);
-	pango_font_description_free(desc);
-}
+static gboolean windowed = 0;
 
 static char *
-make_utf8(unsigned chars)
+make_utf8(unsigned chars, unsigned font_size)
 {
-	char *buf;
-	unsigned i, pos;
-	/* One unicode character takes max. 6 bytes in UTF-8. */
-	buf = g_malloc(chars*7);
-	for (pos=0, i=0; i < chars; ++i) {
-		gunichar u = g_random_int_range(0x30a1, 0x30fa);
-		int len = g_unichar_to_utf8(u, &buf[pos]);
-		buf[pos+len] = '\n';
-		pos += len+1;
+	unsigned i;
+	GString *buf;
+	buf = g_string_new("");
+	g_string_printf(buf, "<span font=\"%upx\">", font_size);
+	for (i=0; i < chars; ++i) {
+		g_string_append_unichar(buf,
+				g_random_int_range(0x30a1, 0x30fa));
+		g_string_append_c(buf, '\n');
 	}
-	buf[pos-1] = 0;
-	return buf;
+	g_string_erase(buf, buf->len-1, -1);
+	g_string_append(buf, "</span>");
+	return g_string_free(buf, FALSE);
 }
 
 static ClutterActor *
-make_vertical_actor(unsigned chars, const ClutterColor *text_color)
+make_vertical_actor(unsigned chars, unsigned font_size, const ClutterColor *text_color)
 {
-	static const unsigned font_min_px=6, font_max_px=20;
-	const unsigned maxw=font_max_px, maxh=2*font_max_px*chars;
 	char *text;
 	int width, height;
 	cairo_t *cr;
 	cairo_surface_t *surface;
 	PangoLayout *layout;
 	ClutterActor *actor;
-	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, maxw, maxh);
+	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+			font_size, 2*font_size*chars);
 	cr = cairo_create(surface);
 	layout = pango_cairo_create_layout(cr);
-	set_pango_font(layout, font_min_px, font_max_px);
-	text = make_utf8(chars);
-	pango_layout_set_text(layout, text, -1);
+	text = make_utf8(chars, font_size);
+	pango_layout_set_markup(layout, text, -1);
 	g_free(text);
-	clutter_cairo_set_source_color(cr, text_color);
+	cairo_set_source_rgba(cr,
+			text_color->red   / 255.0,
+			text_color->green / 255.0,
+			text_color->blue  / 255.0,
+			text_color->alpha / 255.0);
 	pango_cairo_show_layout(cr, layout);
 	pango_layout_get_size (layout, &width, &height);
 	width = PANGO_PIXELS(width);
@@ -81,7 +72,7 @@ make_vertical_actor(unsigned chars, const ClutterColor *text_color)
 			height,
 			cairo_image_surface_get_stride(surface),
 			4,
-			CLUTTER_TEXTURE_NONE,
+			0,
 			NULL);
 	cairo_surface_destroy(surface);
 	cairo_destroy(cr);
@@ -95,17 +86,19 @@ make_vertical_strip(void)
 	static const ClutterColor text_color = {   0, 255,   0, 255 };
 	static const ClutterColor last_color = { 255, 255, 255, 255 };
 	ClutterActor *group, *actor1, *actor2;
-	unsigned chars = g_random_int_range(100, 200);
+	unsigned chars, font_size;
+	chars = g_random_int_range(100, 200);
+	font_size = g_random_int_range(6, 20);
 	group = clutter_group_new();
-	actor1 = make_vertical_actor(chars, &text_color);
-	actor2 = make_vertical_actor(1, &last_color);
+	actor1 = make_vertical_actor(chars, font_size, &text_color);
+	actor2 = make_vertical_actor(1, font_size, &last_color);
 	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor1);
 	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor2);
 	clutter_actor_set_y(actor2, clutter_actor_get_height(actor1));
-	g_debug("%s(): %u characters, actor size: [%2g, %4g]",
+	g_debug("%s(): %u characters, actor size: [%2u, %4u]",
 			__func__, chars+1,
-			clutter_actor_get_width(group),
-			clutter_actor_get_height(group));
+			(unsigned)clutter_actor_get_width(group),
+			(unsigned)clutter_actor_get_height(group));
 	return group;
 }
 
@@ -113,13 +106,22 @@ int main(int argc, char **argv)
 {
 	static const ClutterColor stage_color = { 0, 0, 0, 255 };
 	float xpos=0;
-	clutter_init(&argc, &argv);
+	if (clutter_init(&argc, &argv) < 0) {
+		return 1;
+	}
 	ClutterActor *stage = clutter_stage_get_default();
+	if (!stage) {
+		return 1;
+	}
 	clutter_stage_set_color(CLUTTER_STAGE(stage), &stage_color);
 	if (windowed) {
 		clutter_actor_set_size(stage, 640, 480);
 	} else {
+#if CLUTTER_CHECK_VERSION(1,0,0)
 		clutter_stage_set_fullscreen(CLUTTER_STAGE(stage), TRUE);
+#else
+		clutter_stage_fullscreen(CLUTTER_STAGE(stage));
+#endif
 	}
 	clutter_stage_hide_cursor(CLUTTER_STAGE(stage));
 	clutter_stage_set_title(CLUTTER_STAGE(stage), "Clutrix");
@@ -127,17 +129,35 @@ int main(int argc, char **argv)
 		ClutterActor *actor = make_vertical_strip();
 		clutter_stage_add(stage, actor);
 		clutter_actor_set_position(actor, xpos, 0);
+#if CLUTTER_CHECK_VERSION(1,0,0)
 		ClutterAnimation *anim = clutter_actor_animate(actor,
 				CLUTTER_EASE_IN_SINE,
 				g_random_int_range(3000,9000),
 				"fixed::opacity", (guchar)255,
-				"fixed::x", xpos,
 				"fixed::y",
 				-clutter_actor_get_height(actor)-g_random_int_range(0, 200),
 				"y", CLUTTER_STAGE_HEIGHT(),
 				"opacity", (guchar)0,
 				NULL);
 		clutter_animation_set_loop(anim, TRUE);
+#elif CLUTTER_CHECK_VERSION(0,8,0)
+		ClutterTimeline *timeline;
+		ClutterBehaviour *beh_opacity, *beh_path;
+		ClutterAlpha *alpha;
+		ClutterKnot knots[] = {
+			{xpos, -clutter_actor_get_height(actor)-g_random_int_range(0, 200)},
+			{xpos, CLUTTER_STAGE_HEIGHT()},
+		};
+		timeline = clutter_timeline_new_for_duration(g_random_int_range(3000, 9000));
+		alpha = clutter_alpha_new_full(timeline,
+				clutter_sine_inc_func, NULL, NULL);
+		beh_opacity = clutter_behaviour_opacity_new(alpha, 255, 0);
+		beh_path = clutter_behaviour_path_new(alpha, knots, 2);
+		clutter_behaviour_apply(beh_opacity, actor);
+		clutter_behaviour_apply(beh_path, actor);
+		clutter_timeline_set_loop(timeline, TRUE);
+		clutter_timeline_start(timeline);
+#endif
 		xpos += clutter_actor_get_width(actor);
 	}
 	clutter_actor_show(stage);
