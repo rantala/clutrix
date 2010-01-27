@@ -31,7 +31,7 @@ make_utf8(unsigned chars, unsigned font_size)
 	g_string_printf(buf, "<span font=\"%upx\">", font_size);
 	for (i=0; i < chars; ++i) {
 		g_string_append_unichar(buf,
-				g_random_int_range(0x30a1, 0x30fa));
+				g_random_int_range(0x30a1, 0x30df));
 		g_string_append_c(buf, '\n');
 	}
 	g_string_erase(buf, buf->len-1, -1);
