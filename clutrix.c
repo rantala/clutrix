@@ -49,7 +49,7 @@ make_vertical_actor(unsigned chars, unsigned font_size, const ClutterColor *text
 	PangoLayout *layout;
 	ClutterActor *actor;
 	surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-			font_size, 2*font_size*chars);
+			2*font_size, 3*font_size*chars);
 	cr = cairo_create(surface);
 	layout = pango_cairo_create_layout(cr);
 	text = make_utf8(chars, font_size);
@@ -87,11 +87,17 @@ make_vertical_strip(void)
 	static const ClutterColor last_color = { 255, 255, 255, 255 };
 	ClutterActor *group, *actor1, *actor2;
 	unsigned chars, font_size;
-	chars = g_random_int_range(100, 200);
-	font_size = g_random_int_range(6, 20);
+	chars = g_random_int_range(20, 60);
+	font_size = g_random_int_range(20, 30);
 	group = clutter_group_new();
 	actor1 = make_vertical_actor(chars, font_size, &text_color);
 	actor2 = make_vertical_actor(1, font_size, &last_color);
+#if CLUTTER_CHECK_VERSION(1,0,0)
+	clutter_texture_set_repeat(CLUTTER_TEXTURE(actor1), FALSE, TRUE);
+	clutter_actor_set_size(actor1,
+			clutter_actor_get_width(actor1),
+			5*clutter_actor_get_height(actor1));
+#endif
 	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor1);
 	clutter_container_add_actor(CLUTTER_CONTAINER(group), actor2);
 	clutter_actor_set_y(actor2, clutter_actor_get_height(actor1));
@@ -102,15 +108,39 @@ make_vertical_strip(void)
 	return group;
 }
 
+static gboolean
+keypress_cb(ClutterActor *actor, ClutterEvent *event, void *data)
+{
+	(void)data; (void)actor;
+	unsigned keysym = 0;
+#if CLUTTER_CHECK_VERSION(1,0,0)
+	keysym = clutter_event_get_key_symbol(event);
+#elif CLUTTER_CHECK_VERSION(0,8,0)
+	keysym = clutter_key_event_symbol((ClutterKeyEvent *)event);
+#endif
+	switch (keysym) {
+	case CLUTTER_Escape: /* fall through */
+	case CLUTTER_q:      /* fall through */
+	case CLUTTER_Q:
+		clutter_main_quit();
+		break;
+	default:
+		break;
+	}
+	return TRUE;
+}
+
 int main(int argc, char **argv)
 {
 	static const ClutterColor stage_color = { 0, 0, 0, 255 };
 	float xpos=0;
 	if (clutter_init(&argc, &argv) < 0) {
+		fprintf(stderr, "ERROR: clutter_init() failure.\n");
 		return 1;
 	}
 	ClutterActor *stage = clutter_stage_get_default();
 	if (!stage) {
+		fprintf(stderr, "ERROR: unable to get clutter default stage.\n");
 		return 1;
 	}
 	clutter_stage_set_color(CLUTTER_STAGE(stage), &stage_color);
@@ -132,10 +162,10 @@ int main(int argc, char **argv)
 #if CLUTTER_CHECK_VERSION(1,0,0)
 		ClutterAnimation *anim = clutter_actor_animate(actor,
 				CLUTTER_EASE_IN_SINE,
-				g_random_int_range(3000,9000),
+				g_random_int_range(3000, 19000),
 				"fixed::opacity", (guchar)255,
 				"fixed::y",
-				-clutter_actor_get_height(actor)-g_random_int_range(0, 200),
+				-clutter_actor_get_height(actor)-g_random_int_range(0, 400),
 				"y", CLUTTER_STAGE_HEIGHT(),
 				"opacity", (guchar)0,
 				NULL);
@@ -145,10 +175,10 @@ int main(int argc, char **argv)
 		ClutterBehaviour *beh_opacity, *beh_path;
 		ClutterAlpha *alpha;
 		ClutterKnot knots[] = {
-			{xpos, -clutter_actor_get_height(actor)-g_random_int_range(0, 200)},
+			{xpos, -clutter_actor_get_height(actor)-g_random_int_range(0, 400)},
 			{xpos, CLUTTER_STAGE_HEIGHT()},
 		};
-		timeline = clutter_timeline_new_for_duration(g_random_int_range(3000, 9000));
+		timeline = clutter_timeline_new_for_duration(g_random_int_range(3000, 19000));
 		alpha = clutter_alpha_new_full(timeline,
 				clutter_sine_inc_func, NULL, NULL);
 		beh_opacity = clutter_behaviour_opacity_new(alpha, 255, 0);
@@ -160,8 +190,12 @@ int main(int argc, char **argv)
 #endif
 		xpos += clutter_actor_get_width(actor);
 	}
+	g_signal_connect(stage, "key-press-event", G_CALLBACK(keypress_cb), NULL);
 	clutter_actor_show(stage);
 	g_debug("entering clutter main loop.");
+	/* Lowering the frame rate seems to give somewhat smoother animation on
+	 * N900. */
+	clutter_set_default_frame_rate(30);
 	clutter_main();
 	return 0;
 }
